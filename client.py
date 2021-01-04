@@ -1,77 +1,78 @@
-import socket
-import sys
+import argparse
 import os
+import socket
 
 
 def main():
-    # Definição do IP e porta de conexão
-    if len(sys.argv) == 1:
-        server = 'localhost'
-        port   = 3002
+    # Argument parsing.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--ip", help="Host's IPv4",
+                        type=str, required=False)
+    parser.add_argument("-p", "--port", help="Port", type=int, required=False)
+    args = vars(parser.parse_args())
 
-    elif len(sys.argv) == 3:
-        server = sys.argv[1]
-        port   = int(sys.argv[2])
+    HOST = args["ip"] if args["ip"] is not None else "localhost"
+    PORT = args["port"] if args["port"] is not None else 3000
 
-    else:
-        print("Uso do programa: python3 cliente.py <host> <porta>")
-        print("Valores padrão: 'localhost:3000'")
-        exit(1)
-
-    # Criação do socket
-    tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print("Conectando a {}:{}".format(server, port))
-
-    # Requisição
-    tcp.connect((server, port))
-    play(tcp)
+    # Socket creation.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as connection:
+        # AF_INET: Internet address family for IPv4.
+        # SOCK_STREAM: Socket type for TCP.
+        connection.connect((HOST, PORT))
+        start_game(connection)
 
 
-def play(tcp):
-    # Recebe mensagem de Boas vindas
-    print(tcp.recv(1024).decode())
+def start_game(connection):
+    # Shows Header and gets user name.
+    name = input(connection.recv(1024).decode())
+    if len(name) == 0:
+        name = "You"
 
-    # Envia o nome do jogador
-    tcp.send(input("").encode())
+    # Sends user name to server.
+    connection.send(name.encode())
 
     while(True):
-        while(True):
-            # Recebe Mesa ou [Vez do computador]
-            message = tcp.recv(1024).decode('utf-8')
-            if message.startswith("[Vez do computador]"): break
+        # Shows Scoreboard and hands.
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print(connection.recv(1024).decode())
+        connection.send("[OK]".encode())
 
-            # Envia "Mesa recebida" e imprime o mapa
-            tcp.send("Mesa recebida".encode())
-            os.system('cls' if os.name == 'nt' else 'clear')
-            print(message)
+        game_status = connection.recv(1024).decode()
 
-            # Recebe 'Quer comprar carta' ou [Vez do computador]
-            message = tcp.recv(1024).decode('utf-8')
-            if message.startswith("[Vez do computador]"): break
-            print(message)
+        # Player's turn
+        if game_status.startswith("[Player's turn]"):
+            while(True):
+                buy_card = input("Do you want more cards? [Y/n]: ")
+                if buy_card in ["", "y", "Y"]:
+                    buy_card = True
+                elif buy_card in ["n", "N"]:
+                    buy_card = False
+                if type(buy_card) == bool:
+                    break
+            connection.send(str(buy_card).encode())
 
-            # Envia resposta (Quer ou não comprar carta)
-            tcp.send(input("").encode())
+        # Dealer's turn.
+        elif game_status.startswith("[Dealer's turn]"):
+            input("Press [Enter] to continue.")
+            connection.send("[OK]".encode())
 
-        # Envia "[Vez do computador]"
-        tcp.send("[Vez do computador]".encode())
-
-        while(True):
-            # Recebe Mesa ou 'Você Ganhou/Perdeu'
-            message = tcp.recv(1024).decode()
-            if message.startswith("Você"): break
-            os.system('cls' if os.name == 'nt' else 'clear')
-            print(message)
-
-            # Envia um OK
-            tcp.send("Mensagem recebida".encode())
-
-        # Envia a resposta
-        print(message)
-        resposta = input("")
-        tcp.send(resposta.encode())
-        if resposta is "n": break
-    tcp.close()
+        # End of round.
+        else:  # "[End of round]"
+            # Shows result.
+            connection.send("[OK]".encode())
+            print(connection.recv(1024).decode())
+            while(True):
+                keep_playing = input("Do you want to keep playing? [Y/n]: ")
+                if keep_playing in ["", "y", "Y"]:
+                    keep_playing = True
+                elif keep_playing in ["n", "N"]:
+                    keep_playing = False
+                if type(keep_playing) == bool:
+                    break
+            connection.send(str(keep_playing).encode())
+            if not keep_playing:
+                exit(0)
 
 
-main()
+if __name__ == "__main__":
+    main()
